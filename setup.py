@@ -1,4 +1,4 @@
-"""Setup for rhasspyasr_pocketsphinx_hermes"""
+"""Setup for rhasspy-asr-whisper-hermes"""
 import os
 
 import setuptools
