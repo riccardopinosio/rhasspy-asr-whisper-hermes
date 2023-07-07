@@ -14,16 +14,16 @@ with open(os.path.join(this_dir, "VERSION"), "r") as version_file:
     version = version_file.read().strip()
 
 setuptools.setup(
-    name="rhasspy-asr-pocketsphinx-hermes",
+    name="rhasspy-asr-whisper-hermes",
     version=version,
-    author="Michael Hansen",
-    author_email="hansen.mike@gmail.com",
-    url="https://github.com/rhasspy/rhasspy-asr-pocketsphinx-hermes",
+    author="Riccardo Pinosio",
+    author_email="rpinosio@gmail.com",
+    url="https://github.com/rhasspy/rhasspy-asr-whisper-hermes",
     packages=setuptools.find_packages(),
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "rhasspyasr_pocketsphinx_hermes = rhasspyasr_pocketsphinx_hermes.__main__:main"
+            "rhasspyasr_whisper_hermes = rhasspyasr_whisper_hermes.__main__:main"
         ]
     },
     classifiers=[

@@ -1,16 +1,8 @@
-"""Hermes MQTT server for Rhasspy ASR using Pocketsphinx"""
-import gzip
+"""Hermes MQTT server for Rhasspy ASR using openai Whisper API"""
 import logging
-import os
-import tempfile
 import typing
-from collections import defaultdict
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 
-import networkx as nx
-import rhasspyasr_pocketsphinx
-import rhasspynlu
 from rhasspyasr import Transcriber
 from rhasspyhermes.asr import (
     AsrAudioCaptured,
@@ -21,24 +13,20 @@ from rhasspyhermes.asr import (
     AsrTextCaptured,
     AsrToggleOff,
     AsrToggleOn,
-    AsrToggleReason,
-    AsrTrain,
-    AsrTrainSuccess,
+    AsrToggleReason
 )
 from rhasspyhermes.audioserver import AudioFrame, AudioSessionFrame
 from rhasspyhermes.base import Message
-from rhasspyhermes.client import GeneratorType, HermesClient, TopicArgs
-from rhasspyhermes.g2p import G2pError, G2pPhonemes, G2pPronounce, G2pPronunciation
+from rhasspyhermes.client import GeneratorType, HermesClient
 from rhasspyhermes.nlu import AsrToken, AsrTokenTime
-from rhasspynlu.g2p import PronunciationsType
-from rhasspysilence import (
+from rhasspysilence.const import (
     SilenceMethod,
     VoiceCommandRecorder,
     VoiceCommandResult,
-    WebRtcVadRecorder,
 )
+from rhasspysilence import WebRtcVadRecorder
 
-_LOGGER = logging.getLogger("rhasspyasr_pocketsphinx_hermes")
+_LOGGER = logging.getLogger("rhasspyasr_whisper_hermes")
 
 # -----------------------------------------------------------------------------
 
@@ -53,42 +41,19 @@ class SessionInfo:
     transcription_sent: bool = False
     num_wav_bytes: int = 0
     audio_buffer: typing.Optional[bytes] = None
-
-    # Custom transcriber for filtered intents
     transcriber: typing.Optional[Transcriber] = None
-
-
-@dataclass
-class PronunciationDictionary:
-    """Details of a phonetic dictionary."""
-
-    path: Path
-    pronunciations: PronunciationsType = field(default_factory=dict)
-    mtime_ns: typing.Optional[int] = None
 
 
 # -----------------------------------------------------------------------------
 
 
 class AsrHermesMqtt(HermesClient):
-    """Hermes MQTT server for Rhasspy ASR using Pocketsphinx."""
+    """Hermes MQTT server for Rhasspy ASR using Whisper api."""
 
     def __init__(
         self,
         client,
-        transcriber_factory: typing.Callable[[Path], Transcriber],
-        dictionary: Path,
-        language_model: Path,
-        base_dictionaries: typing.Optional[typing.List[Path]] = None,
-        dictionary_word_transform: typing.Optional[typing.Callable[[str], str]] = None,
-        g2p_model: typing.Optional[Path] = None,
-        g2p_word_transform: typing.Optional[typing.Callable[[str], str]] = None,
-        unknown_words: typing.Optional[Path] = None,
-        no_overwrite_train: bool = False,
-        intent_graph_path: typing.Optional[Path] = None,
-        base_language_model_fst: typing.Optional[Path] = None,
-        base_language_model_weight: float = 0,
-        mixed_language_model_fst: typing.Optional[Path] = None,
+        transcriber: Transcriber,
         site_ids: typing.Optional[typing.List[str]] = None,
         enabled: bool = True,
         sample_rate: int = 16000,
@@ -106,67 +71,27 @@ class AsrHermesMqtt(HermesClient):
         max_current_energy_ratio_threshold: typing.Optional[float] = None,
         current_energy_threshold: typing.Optional[float] = None,
         silence_method: SilenceMethod = SilenceMethod.VAD_ONLY,
-        lm_cache_dir: typing.Optional[typing.Union[str, Path]] = None,
         lang: typing.Optional[str] = None,
     ):
         super().__init__(
-            "rhasspyasr_pocketsphinx_hermes",
+            "rhasspyasr_whisper_hermes",
             client,
             site_ids=site_ids,
             sample_rate=sample_rate,
             sample_width=sample_width,
             channels=channels,
         )
+        
+        self.transcriber = transcriber
 
         self.subscribe(
             AsrToggleOn,
             AsrToggleOff,
             AsrStartListening,
             AsrStopListening,
-            G2pPronounce,
             AudioFrame,
             AudioSessionFrame,
-            AsrTrain,
         )
-
-        self.make_transcriber = transcriber_factory
-        self.transcriber: typing.Optional[Transcriber] = None
-
-        # Intent graph from training
-        self.intent_graph_path: typing.Optional[Path] = intent_graph_path
-        self.intent_graph: typing.Optional[nx.DiGraph] = None
-
-        # Files to write during training
-        self.dictionary = dictionary
-        self.language_model = language_model
-
-        # Cache for filtered language model
-        self.lm_cache_dir = lm_cache_dir
-        self.lm_cache_paths: typing.Dict[str, Path] = {}
-        self.lm_cache_transcribers: typing.Dict[str, Transcriber] = {}
-
-        # Pronunciation dictionaries and word transform function
-        base_dictionaries = base_dictionaries or []
-        self.base_dictionaries = [
-            PronunciationDictionary(path=path) for path in base_dictionaries
-        ]
-        self.dictionary_word_transform = dictionary_word_transform
-
-        # Grapheme-to-phonme model (Phonetisaurus FST) and word transform
-        # function.
-        self.g2p_model = g2p_model
-        self.g2p_word_transform = g2p_word_transform
-
-        # Path to write missing words and guessed pronunciations
-        self.unknown_words = unknown_words
-
-        # Mixed language model
-        self.base_language_model_fst = base_language_model_fst
-        self.base_language_model_weight = base_language_model_weight
-        self.mixed_language_model_fst = mixed_language_model_fst
-
-        # If True, dictionary and language model won't be overwritten during training
-        self.no_overwrite_train = no_overwrite_train
 
         # True if ASR system is enabled
         self.enabled = enabled
@@ -212,10 +137,6 @@ class AsrHermesMqtt(HermesClient):
             else:
                 # Use buffer
                 session.audio_buffer = bytes()
-
-            if message.intent_filter:
-                # Load filtered language model
-                self.maybe_load_filtered_transcriber(session, message.intent_filter)
 
             self.sessions[message.session_id] = session
 
@@ -392,10 +313,6 @@ class AsrHermesMqtt(HermesClient):
         lang: typing.Optional[str] = None,
     ) -> AsrTextCaptured:
         """Transcribe audio data and publish captured text."""
-        if not transcriber and not self.transcriber:
-            # Load default transcriber
-            self.transcriber = self.make_transcriber(self.language_model)
-
         transcriber = transcriber or self.transcriber
         assert transcriber, "No transcriber"
 
@@ -447,222 +364,6 @@ class AsrHermesMqtt(HermesClient):
             lang=lang,
         )
 
-    async def handle_train(
-        self, train: AsrTrain, site_id: str = "default"
-    ) -> typing.AsyncIterable[
-        typing.Union[typing.Tuple[AsrTrainSuccess, TopicArgs], AsrError]
-    ]:
-        """Re-trains ASR system"""
-        try:
-            if not self.base_dictionaries:
-                _LOGGER.warning(
-                    "No base dictionaries provided. Training will likely fail."
-                )
-
-            # Load base dictionaries
-            pronunciations: PronunciationsType = defaultdict(list)
-            for base_dict in self.base_dictionaries:
-                if not os.path.exists(base_dict.path):
-                    _LOGGER.warning(
-                        "Base dictionary does not exist: %s", base_dict.path
-                    )
-                    continue
-
-                # Re-load dictionary if modification time has changed
-                dict_mtime_ns = os.stat(base_dict.path).st_mtime_ns
-                if (base_dict.mtime_ns is None) or (
-                    base_dict.mtime_ns != dict_mtime_ns
-                ):
-                    base_dict.mtime_ns = dict_mtime_ns
-                    _LOGGER.debug("Loading base dictionary from %s", base_dict.path)
-                    with open(base_dict.path, "r") as base_dict_file:
-                        rhasspynlu.g2p.read_pronunciations(
-                            base_dict_file, word_dict=base_dict.pronunciations
-                        )
-
-                for word in base_dict.pronunciations:
-                    pronunciations[word].extend(base_dict.pronunciations[word])
-
-            # Load intent graph
-            _LOGGER.debug("Loading %s", train.graph_path)
-            with gzip.GzipFile(train.graph_path, mode="rb") as graph_gzip:
-                self.intent_graph = nx.readwrite.gpickle.read_gpickle(graph_gzip)
-
-            # Clean LM cache completely
-            for lm_path in self.lm_cache_paths.values():
-                try:
-                    lm_path.unlink()
-                except Exception:
-                    pass
-
-            self.lm_cache_paths = {}
-            self.lm_cache_transcribers = {}
-
-            # Generate dictionary/language model
-            if not self.no_overwrite_train:
-                _LOGGER.debug("Starting training")
-                rhasspyasr_pocketsphinx.train(
-                    self.intent_graph,
-                    self.dictionary,
-                    self.language_model,
-                    pronunciations,
-                    dictionary_word_transform=self.dictionary_word_transform,
-                    g2p_model=self.g2p_model,
-                    g2p_word_transform=self.g2p_word_transform,
-                    missing_words_path=self.unknown_words,
-                    base_language_model_fst=self.base_language_model_fst,
-                    base_language_model_weight=self.base_language_model_weight,
-                    mixed_language_model_fst=self.mixed_language_model_fst,
-                )
-            else:
-                _LOGGER.warning("Not overwriting dictionary/language model")
-
-            _LOGGER.debug("Re-loading transcriber")
-            self.transcriber = self.make_transcriber(self.language_model)
-
-            yield (AsrTrainSuccess(id=train.id), {"site_id": site_id})
-        except Exception as e:
-            _LOGGER.exception("handle_train")
-            yield AsrError(
-                error=str(e),
-                context=repr(self.transcriber),
-                site_id=site_id,
-                session_id=train.id,
-            )
-
-    async def handle_pronounce(
-        self, pronounce: G2pPronounce
-    ) -> typing.AsyncIterable[typing.Union[G2pPhonemes, G2pError]]:
-        """Looks up or guesses word pronunciation(s)."""
-        try:
-            result = G2pPhonemes(
-                word_phonemes={},
-                id=pronounce.id,
-                site_id=pronounce.site_id,
-                session_id=pronounce.session_id,
-            )
-
-            # Load base dictionaries
-            pronunciations: typing.Dict[str, typing.List[typing.List[str]]] = {}
-
-            for base_dict in self.base_dictionaries:
-                if base_dict.path.is_file():
-                    _LOGGER.debug("Loading base dictionary from %s", base_dict.path)
-                    with open(base_dict.path, "r") as base_dict_file:
-                        rhasspynlu.g2p.read_pronunciations(
-                            base_dict_file, word_dict=pronunciations
-                        )
-
-            # Try to look up in dictionary first
-            missing_words: typing.Set[str] = set()
-            if pronunciations:
-                for word in pronounce.words:
-                    # Handle case transformation
-                    if self.dictionary_word_transform:
-                        word = self.dictionary_word_transform(word)
-
-                    word_prons = pronunciations.get(word)
-                    if word_prons:
-                        # Use dictionary pronunciations
-                        result.word_phonemes[word] = [
-                            G2pPronunciation(phonemes=p, guessed=False)
-                            for p in word_prons
-                        ]
-                    else:
-                        # Will have to guess later
-                        missing_words.add(word)
-            else:
-                # All words must be guessed
-                missing_words.update(pronounce.words)
-
-            if missing_words:
-                if self.g2p_model:
-                    _LOGGER.debug("Guessing pronunciations of %s", missing_words)
-                    guesses = rhasspynlu.g2p.guess_pronunciations(
-                        missing_words,
-                        self.g2p_model,
-                        g2p_word_transform=self.g2p_word_transform,
-                        num_guesses=pronounce.num_guesses,
-                    )
-
-                    # Add guesses to result
-                    for guess_word, guess_phonemes in guesses:
-                        result_phonemes = result.word_phonemes.get(guess_word) or []
-                        result_phonemes.append(
-                            G2pPronunciation(phonemes=guess_phonemes, guessed=True)
-                        )
-                        result.word_phonemes[guess_word] = result_phonemes
-                else:
-                    _LOGGER.warning("No g2p model. Cannot guess pronunciations.")
-
-            yield result
-        except Exception as e:
-            _LOGGER.exception("handle_pronounce")
-            yield G2pError(
-                error=str(e),
-                context=repr(self.transcriber),
-                site_id=pronounce.site_id,
-                session_id=pronounce.session_id,
-            )
-
-    def cleanup(self):
-        """Delete any temporary files."""
-        for lm_path in self.lm_cache_paths.values():
-            try:
-                lm_path.unlink()
-            except Exception:
-                pass
-
-    def maybe_load_filtered_transcriber(
-        self, session: SessionInfo, intent_filter: typing.List[str]
-    ):
-        """Create/load a language model with only filtered intents."""
-        lm_key = ",".join(intent_filter)
-
-        # Try to look up in cache
-        lm_transcriber = self.lm_cache_transcribers.get(lm_key)
-
-        if not lm_transcriber:
-            lm_path = self.lm_cache_paths.get(lm_key)
-
-            if not lm_path:
-                # Create a new temporary file
-                lm_file = tempfile.NamedTemporaryFile(
-                    suffix=".arpa", dir=self.lm_cache_dir, delete=False
-                )
-                lm_path = Path(lm_file.name)
-                self.lm_cache_paths[lm_key] = lm_path
-
-            # Function to filter intents by name
-            def intent_filter_func(intent_name: str) -> bool:
-                return intent_name in intent_filter
-
-            # Load intent graph and create transcriber
-            if (
-                not self.intent_graph
-                and self.intent_graph_path
-                and self.intent_graph_path.is_file()
-            ):
-                # Load intent graph
-                _LOGGER.debug("Loading %s", self.intent_graph_path)
-                with gzip.GzipFile(self.intent_graph_path, mode="rb") as graph_gzip:
-                    self.intent_graph = nx.readwrite.gpickle.read_gpickle(graph_gzip)
-
-            if self.intent_graph:
-                # Create language model
-                _LOGGER.debug("Converting to ARPA language model")
-                rhasspynlu.arpa_lm.graph_to_arpa(
-                    self.intent_graph, lm_path, intent_filter=intent_filter_func
-                )
-
-                # Load transcriber
-                lm_transcriber = self.make_transcriber(lm_path)
-                self.lm_cache_transcribers[lm_key] = lm_transcriber
-            else:
-                # Use full transcriber
-                _LOGGER.warning("No intent graph loaded. Cannot filter intents.")
-
-        session.transcriber = lm_transcriber
 
     # -------------------------------------------------------------------------
 
@@ -724,14 +425,5 @@ class AsrHermesMqtt(HermesClient):
             # hermes/asr/stopListening
             async for stop_result in self.stop_listening(message):
                 yield stop_result
-        elif isinstance(message, AsrTrain):
-            # rhasspy/asr/<site_id>/train
-            assert site_id, "Missing site_id"
-            async for train_result in self.handle_train(message, site_id=site_id):
-                yield train_result
-        elif isinstance(message, G2pPronounce):
-            # rhasspy/g2p/pronounce
-            async for pronounce_result in self.handle_pronounce(message):
-                yield pronounce_result
         else:
             _LOGGER.warning("Unexpected message: %s", message)

@@ -1,8 +1,8 @@
-Package: rhasspy-asr-pocketsphinx-hermes
+Package: rhasspy-asr-whisper-hermes
 Version: ${version}
 Section: utils
 Priority: optional
 Depends: sox,libngram-tools
 Architecture: ${architecture}
-Maintainer: Michael Hansen
-Description: Hermes MQTT service for Rhasspy Pocketsphinx ASR
+Maintainer: Riccardo Pinosio
+Description: Hermes MQTT service for Rhasspy OpenAI Whisper ASR

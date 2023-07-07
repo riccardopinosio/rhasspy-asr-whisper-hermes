@@ -19,6 +19,6 @@ docker buildx build \
        "${src_dir}" \
        "--platform=${PLATFORMS}" \
        --build-arg "DOCKER_REGISTRY=${DOCKER_REGISTRY}" \
-       --tag "${DOCKER_REGISTRY}/rhasspy/rhasspy-asr-pocketsphinx-hermes:latest" \
-       --tag "${DOCKER_REGISTRY}/rhasspy/rhasspy-asr-pocketsphinx-hermes:${version}" \
+       --tag "${DOCKER_REGISTRY}/rhasspy/rhasspy-asr-whisper-hermes:latest" \
+       --tag "${DOCKER_REGISTRY}/rhasspy/rhasspy-asr-whisper-hermes:${version}" \
        --push

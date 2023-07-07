@@ -1,7 +1,7 @@
 __pycache__/
 .mypy_cache/
 .venv/
-debian/rhasspy-asr-pocketsphinx-hermes*
+debian/rhasspy-asr-whisper-hermes*
 dist/
 *.egg-info/
 pyinstaller/
@@ -11,3 +11,4 @@ download/
 etc/qemu-*
 .coverage
 coverage.xml
+.env

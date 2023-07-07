@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+if [[ -z "${rhasspyasr_whisper_hermes_dir}" ]]; then
+    this_dir="$( cd "$( dirname "$0" )" && pwd )"
+    rhasspyasr_whisper_hermes_dir="${this_dir}/../lib/rhasspyasr_whisper_hermes"
+fi
+
+# Include mitlm and phonetisaurus
+export LD_LIBRARY_PATH="${rhasspyasr_whisper_hermes_dir}/mitlm/lib:${rhasspyasr_whisper_hermes_dir}/phonetisaurus/lib:${LD_LIBRARY_PATH}"
+export PATH="${rhasspyasr_whisper_hermes_dir}/mitlm/bin:${rhasspyasr_whisper_hermes_dir}/phonetisaurus/bin:${PATH}"
+
+# Run service
+"${rhasspyasr_whisper_hermes_dir}/rhasspyasr_whisper_hermes" "$@"

@@ -1,4 +1,4 @@
 """PyInstaller entry point"""
-from rhasspyasr_pocketsphinx_hermes.__main__ import main
+from rhasspyasr_whisper_hermes.__main__ import main
 
 main()

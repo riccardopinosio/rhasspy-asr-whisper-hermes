@@ -12,8 +12,6 @@ src_dir="$(realpath "${this_dir}/..")"
 # -----------------------------------------------------------------------------
 
 venv="${src_dir}/.venv"
-download="${src_dir}/download"
-mkdir -p "${download}"
 
 # -----------------------------------------------------------------------------
 
@@ -29,14 +27,6 @@ source "${venv}/bin/activate"
 echo "Installing Python dependencies"
 pip3 ${PIP_INSTALL} --upgrade pip
 pip3 ${PIP_INSTALL} --upgrade wheel setuptools
-
-# Install pocketsphinx (no PulseAudio)
-pocketsphinx_file="${download}/pocketsphinx-python.tar.gz"
-if [[ ! -s "${pocketsphinx_file}" ]]; then
-    wget -O "${pocketsphinx_file}" 'https://github.com/synesthesiam/pocketsphinx-python/releases/download/v1.0/pocketsphinx-python.tar.gz'
-fi
-
-pip3 ${PIP_INSTALL} "${pocketsphinx_file}"
 
 # Install local Rhasspy dependencies if available
 grep '^rhasspy-' "${src_dir}/requirements.txt" | \

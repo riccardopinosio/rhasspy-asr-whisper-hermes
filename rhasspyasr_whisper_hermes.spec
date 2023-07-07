@@ -56,7 +56,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="rhasspyasr_pocketsphinx_hermes",
+    name="rhasspyasr_whisper_hermes",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -70,5 +70,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    name="rhasspyasr_pocketsphinx_hermes",
+    name="rhasspyasr_whisper_hermes",
 )

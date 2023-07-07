@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------
-# Dockerfile for Rhasspy Pocketsphinx Service
-# (https://github.com/rhasspy/rhasspy-asr-pocketsphinx-hermes)
+# Dockerfile for Rhasspy Whisper Service
+# (https://github.com/rhasspy/rhasspy-asr-whisper-hermes)
 #
 # Requires Docker buildx: https://docs.docker.com/buildx/working-with-buildx/
 # See scripts/build-docker.sh
@@ -66,7 +66,7 @@ ARG TARGETARCH
 ARG TARGETVARIANT
 FROM build-$TARGETARCH$TARGETVARIANT as build
 
-ENV APP_DIR=/usr/lib/rhasspy-asr-pocketsphinx-hermes
+ENV APP_DIR=/usr/lib/rhasspy-asr-whisper-hermes
 ENV BUILD_DIR=/build
 
 # Directory of prebuilt tools
@@ -122,11 +122,11 @@ ARG TARGETARCH
 ARG TARGETVARIANT
 FROM run-$TARGETARCH$TARGETVARIANT
 
-ENV APP_DIR=/usr/lib/rhasspy-asr-pocketsphinx-hermes
+ENV APP_DIR=/usr/lib/rhasspy-asr-whisper-hermes
 COPY --from=build ${APP_DIR}/.venv/ ${APP_DIR}/.venv/
 
 # Copy source
-COPY rhasspyasr_pocketsphinx_hermes/ ${APP_DIR}/rhasspyasr_pocketsphinx_hermes/
-COPY bin/rhasspy-asr-pocketsphinx-hermes ${APP_DIR}/bin/
+COPY rhasspyasr_whisper_hermes/ ${APP_DIR}/rhasspyasr_whisper_hermes/
+COPY bin/rhasspy-asr-whisper-hermes ${APP_DIR}/bin/
 
-ENTRYPOINT ["bash", "/usr/lib/rhasspy-asr-pocketsphinx-hermes/bin/rhasspy-asr-pocketsphinx-hermes"]
+ENTRYPOINT ["bash", "/usr/lib/rhasspy-asr-whisper-hermes/bin/rhasspy-asr-whisper-hermes"]

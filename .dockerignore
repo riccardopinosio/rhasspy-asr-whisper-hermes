@@ -1,6 +1,6 @@
 *
 !requirements.txt
-!rhasspyasr_pocketsphinx_hermes/*.py
+!rhasspyasr_whisper_hermes/*.py
 !Makefile
 !setup.py
 !README.md
@@ -8,4 +8,4 @@
 !VERSION
 !download/
 !scripts/
-!bin/rhasspy-asr-pocketsphinx-hermes
+!bin/rhasspy-asr-whisper-hermes
