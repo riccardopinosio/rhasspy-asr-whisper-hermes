@@ -1,4 +1,4 @@
-paho-mqtt==1.5.0
+paho-mqtt==1.6.1
 starassistant-hermes @ git+https://github.com/riccardopinosio/starassistant-hermes@master
 rhasspy-silence~=0.4.0
 openai==0.27.8
